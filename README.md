@@ -9,7 +9,7 @@ yarn add mobx mobx-keystone mobx-react
 ```
 
 ### Register rootStore
-````
+```
 import { Model, model, prop } from "mobx-keystone";
 import UserStore from "./UserStore";
 
