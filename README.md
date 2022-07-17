@@ -1,46 +1,150 @@
-# Getting Started with Create React App
+### Create new app
+```
+npx create-react-app react-mobx-store --template typescript
+```
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Add mobx dependencies
+```
+yarn add mobx mobx-keystone mobx-react
+```
 
-## Available Scripts
+### Register rootStore
+````
+import { Model, model, prop } from "mobx-keystone";
+import UserStore from "./UserStore";
 
-In the project directory, you can run:
+@model("app/RootStore")
+export default class RootStore extends Model({
+  userStore: prop<UserStore>(),
+  // anotherStore: prop<AnotherStore>(),
+}) {}
+```
 
-### `npm start`
+stores/index.ts
+```
+import { registerRootStore } from "mobx-keystone";
+import React from "react";
+import RootStore from "./RootStore";
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+import UserStore from "./UserStore";
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
 
-### `npm test`
+const StoreContext = React.createContext<RootStore>({} as RootStore);
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+const useStore = () => React.useContext(StoreContext);
+const { Provider: StoreProvider } = StoreContext;
 
-### `npm run build`
+function createRootStore() {
+  const rootStore = new RootStore({
+    userStore: new UserStore({ /* default params */ }),
+    ...
+  });
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+  registerRootStore(rootStore);
+  return rootStore;
+}
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+export { RootStore, StoreContext, StoreProvider, createRootStore, useStore };
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+UserStore
+```
+import { computed } from "mobx";
 
-### `npm run eject`
+import {
+  _async,
+  _await,
+  Model,
+  model,
+  modelFlow,
+  asMap,
+  prop,
+  modelAction,
+} from "mobx-keystone";
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+import { User } from "./models";
+import { UserData } from '../types';
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+async function load(userId: number){
+    var resp = await fetch(`https://jsonplaceholder.typicode.com/users/${userId}`);
+    var user = await resp.json();
+    return user as UserData
+}
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+async function loadList(){
+  var resp = await fetch('https://jsonplaceholder.typicode.com/users');
+  var list = await resp.json();
+  return list as Array<UserData>
+}
 
-## Learn More
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+@model("app/UserStore")
+export default class UserStore extends Model({
+  currentId: prop<number | null>(1),
+  userArrayMap: prop<[string, User][]>(() => []),
+  loading: prop<boolean>(true).withSetter(),
+  currentUser: prop<User | null>(null).withSetter()
+}) {
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+  onAttachedToRootStore() {
+   this.setUser({ id: 1, name: 'Armen', email: 'a@gmail.com', username: 'admin' });
+  }
+
+
+  @modelFlow
+  loadUser = _async(function* (this: UserStore, id: number) {
+    this.setLoading(true);
+    const user = yield* _await(load(id));
+    this.setLoading(false);
+    this.setUser(user as User);
+  });
+
+
+  @modelFlow
+  loadUserList = _async(function* (this: UserStore) {
+    const users = yield* _await(loadList());
+    this.setUserList(users);
+  });
+  
+  get userMap() {
+    return asMap(this.userArrayMap);
+  }
+
+  @computed
+  get users() {
+    const arr = this.userArrayMap.map((i) => i[1]);
+    return arr;
+  }
+
+  
+  @computed
+  get current() {
+    const { currentId } = this;
+    return currentId ? this.userMap.get(currentId.toString()) : null;
+  }
+
+ 
+  @modelAction
+  setUser(this: UserStore, userInfo: UserData) {
+    const currentUser = new User(userInfo);
+    this.setCurrentUser(currentUser)
+    return currentUser;
+  }
+
+  @modelAction
+  setCurrentUserId(this: UserStore, id: number){
+    this.currentId = id;
+  }
+
+  @modelAction
+  setUserList(this: UserStore, users: Array<UserData>){
+    users.forEach(user => {
+      this.userMap.set(`${user.id}`, new User(user));
+    })   
+    
+  }
+
+}
+
+```
